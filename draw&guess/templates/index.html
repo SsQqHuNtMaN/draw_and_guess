@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>你画我猜 · 抽词</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+
+  /* ====== 状态切换 ====== */
+  .screen { display: none; width: 100%; max-width: 420px; }
+  .screen.active { display: block; }
+
+  .card {
+    background: #fff;
+    border-radius: 24px;
+    padding: 32px 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    text-align: center;
+  }
+
+  h1 {
+    font-size: 28px;
+    color: #333;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: #999;
+    margin-bottom: 28px;
+  }
+
+  /* ====== 抽词按钮页 ====== */
+  .btn-draw {
+    display: block;
+    width: 100%;
+    padding: 20px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border: none;
+    border-radius: 16px;
+    cursor: pointer;
+    box-shadow: 0 8px 25px rgba(245,87,108,0.4);
+    transition: transform 0.15s, box-shadow 0.15s;
+    letter-spacing: 4px;
+  }
+  .btn-draw:active {
+    transform: scale(0.96);
+    box-shadow: 0 4px 12px rgba(245,87,108,0.3);
+  }
+  .btn-draw:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  /* ====== 选词页 ====== */
+  .word-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .word-card {
+    padding: 18px 20px;
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+    background: #f8f9ff;
+    border: 3px solid #e0e3ff;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .word-card:active {
+    background: #667eea;
+    color: #fff;
+    border-color: #667eea;
+    transform: scale(0.97);
+  }
+  .word-card .hint {
+    display: block;
+    font-size: 13px;
+    font-weight: 400;
+    color: #999;
+    margin-top: 4px;
+  }
+  .word-card:active .hint {
+    color: rgba(255,255,255,0.7);
+  }
+
+  /* ====== 结果页 ====== */
+  .result-word {
+    font-size: 48px;
+    font-weight: 900;
+    color: #667eea;
+    line-height: 1.2;
+    word-break: break-all;
+    padding: 20px 0;
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .result-hint {
+    font-size: 16px;
+    color: #999;
+    margin-bottom: 24px;
+    min-height: 24px;
+  }
+  .btn-group {
+    display: flex;
+    gap: 12px;
+  }
+  .btn-reset {
+    flex: 1;
+    padding: 16px;
+    font-size: 18px;
+    font-weight: 700;
+    color: #667eea;
+    background: #eef0ff;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .btn-reset:active { transform: scale(0.95); }
+  .btn-reset.primary {
+    flex: 2;
+    color: #fff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+
+  /* ====== 加载/错误状态 ====== */
+  .loading { opacity: 0.6; pointer-events: none; }
+  .error-msg {
+    color: #e74c3c;
+    font-size: 14px;
+    margin-top: 12px;
+    display: none;
+  }
+
+  /* ====== 底部信息 ====== */
+  .footer {
+    margin-top: 20px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== 第 1 屏：抽词 ==================== -->
+<div id="screen-draw" class="screen active">
+  <div class="card">
+    <h1>🎨 你画我猜</h1>
+    <p class="subtitle">点击按钮随机抽取 3 个词语</p>
+    <button class="btn-draw" id="btnDraw" onclick="doDraw()">抽 词</button>
+    <p class="error-msg" id="errDraw"></p>
+  </div>
+  <p class="footer" id="wordCount">正在加载词库...</p>
+</div>
+
+<!-- ==================== 第 2 屏：三选一 ==================== -->
+<div id="screen-pick" class="screen">
+  <div class="card">
+    <h1>👆 三选一</h1>
+    <p class="subtitle">请选择本轮要使用的词语</p>
+    <div class="word-cards" id="wordCards"></div>
+    <button class="btn-reset" onclick="goBack()">↩ 重新抽词</button>
+  </div>
+</div>
+
+<!-- ==================== 第 3 屏：结果展示 ==================== -->
+<div id="screen-result" class="screen">
+  <div class="card">
+    <h1>✅ 本轮词语</h1>
+    <div class="result-word" id="resultWord"></div>
+    <div class="result-hint" id="resultHint"></div>
+    <div class="btn-group">
+      <button class="btn-reset" onclick="goDraw()">🎲 再抽一轮</button>
+      <button class="btn-reset primary" onclick="goDrawWithOld()">📋 同一组重选</button>
+    </div>
+  </div>
+  <p class="footer">确定词语后，点击左上角按钮重新抽取</p>
+</div>
+
+<script>
+// ======================== 状态管理 ========================
+let currentWords = [];    // 当前这组 3 个词
+let selectedWord = null;  // 被选中的词
+
+// ======================== 屏幕切换 ========================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+// ======================== 初始化 ========================
+fetch('/api/word-count')
+  .then(r => r.json())
+  .then(d => {
+    document.getElementById('wordCount').textContent = `词库共 ${d.count} 条 · 局域网模式`;
+  })
+  .catch(() => {
+    document.getElementById('wordCount').textContent = '局域网模式';
+  });
+
+// ======================== 抽词 ========================
+async function doDraw() {
+  const btn = document.getElementById('btnDraw');
+  const err = document.getElementById('errDraw');
+  btn.disabled = true;
+  btn.textContent = '抽取中...';
+  err.style.display = 'none';
+
+  try {
+    const res = await fetch('/api/draw');
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error);
+
+    currentWords = data.words;
+    renderPickCards();
+    showScreen('screen-pick');
+  } catch (e) {
+    err.textContent = '加载失败，请检查网络连接后重试';
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '抽 词';
+  }
+}
+
+// ======================== 渲染三选一卡片 ========================
+function renderPickCards() {
+  const container = document.getElementById('wordCards');
+  container.innerHTML = currentWords.map((w, i) => `
+    <div class="word-card" onclick="pickWord(${i})">
+      ${w.word}
+      ${w.hint ? `<span class="hint">💡 ${w.hint}</span>` : ''}
+    </div>
+  `).join('');
+}
+
+// ======================== 选中词语 ========================
+function pickWord(index) {
+  selectedWord = currentWords[index];
+  document.getElementById('resultWord').textContent = selectedWord.word;
+  document.getElementById('resultHint').textContent = selectedWord.hint ? '💡 ' + selectedWord.hint : '';
+  showScreen('screen-result');
+}
+
+// ======================== 返回重抽 ========================
+function goBack() {
+  showScreen('screen-draw');
+}
+
+function goDraw() {
+  currentWords = [];
+  selectedWord = null;
+  showScreen('screen-draw');
+}
+
+function goDrawWithOld() {
+  // 同一组词重新选择（不重新抽）
+  renderPickCards();
+  showScreen('screen-pick');
+}
+</script>
+
+</body>
+</html>

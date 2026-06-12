@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>你画我猜 · 抽词</title>
+<!-- Papa Parse — 稳健的 CSV 解析库，完美处理引号内逗号等边界情况 -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+
+  /* ====== 状态切换 ====== */
+  .screen { display: none; width: 100%; max-width: 420px; }
+  .screen.active { display: block; }
+
+  .card {
+    background: #fff;
+    border-radius: 24px;
+    padding: 32px 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    text-align: center;
+  }
+
+  h1 {
+    font-size: 28px;
+    color: #333;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    font-size: 14px;
+    color: #999;
+    margin-bottom: 28px;
+  }
+
+  /* ====== 抽词按钮页 ====== */
+  .btn-draw {
+    display: block;
+    width: 100%;
+    padding: 20px;
+    font-size: 22px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    border: none;
+    border-radius: 16px;
+    cursor: pointer;
+    box-shadow: 0 8px 25px rgba(245,87,108,0.4);
+    transition: transform 0.15s, box-shadow 0.15s;
+    letter-spacing: 4px;
+  }
+  .btn-draw:active {
+    transform: scale(0.96);
+    box-shadow: 0 4px 12px rgba(245,87,108,0.3);
+  }
+  .btn-draw:disabled {
+    opacity: 0.5;
+    pointer-events: none;
+  }
+
+  /* ====== 选词页 ====== */
+  .word-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .word-card {
+    padding: 18px 20px;
+    font-size: 20px;
+    font-weight: 600;
+    color: #333;
+    background: #f8f9ff;
+    border: 3px solid #e0e3ff;
+    border-radius: 16px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .word-card:active {
+    background: #667eea;
+    color: #fff;
+    border-color: #667eea;
+    transform: scale(0.97);
+  }
+  .word-card .hint {
+    display: block;
+    font-size: 13px;
+    font-weight: 400;
+    color: #999;
+    margin-top: 4px;
+  }
+  .word-card:active .hint {
+    color: rgba(255,255,255,0.7);
+  }
+
+  /* ====== 结果页 ====== */
+  .result-word {
+    font-size: 48px;
+    font-weight: 900;
+    color: #667eea;
+    line-height: 1.2;
+    word-break: break-all;
+    padding: 20px 0;
+    min-height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .result-hint {
+    font-size: 16px;
+    color: #999;
+    margin-bottom: 24px;
+    min-height: 24px;
+  }
+  .btn-group {
+    display: flex;
+    gap: 12px;
+  }
+  .btn-reset {
+    flex: 1;
+    padding: 16px;
+    font-size: 18px;
+    font-weight: 700;
+    color: #667eea;
+    background: #eef0ff;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: transform 0.15s;
+  }
+  .btn-reset:active { transform: scale(0.95); }
+  .btn-reset.primary {
+    flex: 2;
+    color: #fff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  }
+
+  /* ====== 加载/错误/重试状态 ====== */
+  .loading-overlay {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    padding: 40px 0;
+  }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 4px solid #e0e3ff;
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-msg {
+    color: #e74c3c;
+    font-size: 14px;
+    margin-top: 12px;
+    display: none;
+  }
+  .error-box {
+    background: #fff;
+    border-radius: 24px;
+    padding: 40px 24px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    text-align: center;
+    max-width: 420px;
+    width: 100%;
+  }
+  .error-box h2 { font-size: 22px; color: #e74c3c; margin-bottom: 12px; }
+  .error-box p { font-size: 14px; color: #666; margin-bottom: 20px; line-height: 1.6; }
+  .btn-retry {
+    padding: 14px 36px;
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+  }
+  .btn-retry:active { transform: scale(0.95); }
+
+  /* ====== 底部信息 ====== */
+  .footer {
+    margin-top: 20px;
+    font-size: 12px;
+    color: rgba(255,255,255,0.6);
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== 加载中 ==================== -->
+<div id="screen-loading" class="screen active">
+  <div class="card">
+    <div class="loading-overlay">
+      <h1>🎨 你画我猜</h1>
+      <div class="spinner"></div>
+      <p class="subtitle" style="margin-bottom:0">正在加载词库...</p>
+    </div>
+  </div>
+  <p class="footer">GitHub Pages 托管 · 词库动态更新</p>
+</div>
+
+<!-- ==================== 加载失败 ==================== -->
+<div id="screen-error" class="screen">
+  <div class="error-box">
+    <h2>😵 词库加载失败</h2>
+    <p id="errorDetail">请检查网络连接后重试</p>
+    <button class="btn-retry" onclick="initApp()">🔄 重新加载</button>
+  </div>
+</div>
+
+<!-- ==================== 第 1 屏：抽词 ==================== -->
+<div id="screen-draw" class="screen">
+  <div class="card">
+    <h1>🎨 你画我猜</h1>
+    <p class="subtitle">点击按钮随机抽取 3 个词语</p>
+    <button class="btn-draw" id="btnDraw" onclick="doDraw()">抽 词</button>
+    <p class="error-msg" id="errDraw"></p>
+  </div>
+  <p class="footer" id="wordCount"></p>
+</div>
+
+<!-- ==================== 第 2 屏：三选一 ==================== -->
+<div id="screen-pick" class="screen">
+  <div class="card">
+    <h1>👆 三选一</h1>
+    <p class="subtitle">请选择本轮要使用的词语</p>
+    <div class="word-cards" id="wordCards"></div>
+    <button class="btn-reset" onclick="goBack()">↩ 重新抽词</button>
+  </div>
+</div>
+
+<!-- ==================== 第 3 屏：结果展示 ==================== -->
+<div id="screen-result" class="screen">
+  <div class="card">
+    <h1>✅ 本轮词语</h1>
+    <div class="result-word" id="resultWord"></div>
+    <div class="result-hint" id="resultHint"></div>
+    <div class="btn-group">
+      <button class="btn-reset" onclick="goDraw()">🎲 再抽一轮</button>
+      <button class="btn-reset primary" onclick="goDrawWithOld()">📋 同一组重选</button>
+    </div>
+  </div>
+  <p class="footer">确定词语后，点击左上角按钮重新抽取</p>
+</div>
+
+<script>
+// ======================== CSV 文件路径 ========================
+// GitHub Pages 部署后，CSV 与 index.html 在同一目录
+const CSV_URL = '你画我猜词库.csv';
+
+// ======================== 全局状态 ========================
+let wordBank = [];         // [{word, hint}, ...] 全部词条
+let currentWords = [];    // 当前这组抽到的词
+let selectedWord = null;  // 被选中的词
+
+// ======================== 屏幕切换 ========================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const target = document.getElementById(id);
+  if (target) target.classList.add('active');
+}
+
+// ======================== 初始化：加载并解析 CSV ========================
+async function initApp() {
+  showScreen('screen-loading');
+
+  try {
+    const resp = await fetch(CSV_URL);
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+    }
+    const csvText = await resp.text();
+
+    // 使用 Papa Parse 解析 CSV（自动处理引号、逗号等边界情况）
+    const parsed = Papa.parse(csvText, {
+      header: true,           // 第一行作为列名
+      skipEmptyLines: true,   // 跳过空行
+      transformHeader: h => h.trim(),  // 去除列名首尾空格
+      transform: v => v.trim(),        // 去除每个字段首尾空格
+    });
+
+    // 检查解析错误
+    if (parsed.errors.length > 0) {
+      console.warn('CSV 解析警告:', parsed.errors);
+    }
+
+    // 提取有效词条
+    wordBank = [];
+    for (const row of parsed.data) {
+      const word = row['词'] || '';
+      const hint = row['解释（若有）'] || row['解释'] || '';
+      if (word) {
+        wordBank.push({ word, hint });
+      }
+    }
+
+    if (wordBank.length === 0) {
+      throw new Error('词库文件中没有找到有效词条，请检查 CSV 格式');
+    }
+
+    // 初始化完成，显示抽词页
+    document.getElementById('wordCount').textContent =
+      `词库共 ${wordBank.length} 条 · GitHub Pages 托管`;
+    showScreen('screen-draw');
+
+  } catch (e) {
+    console.error('词库加载失败:', e);
+    document.getElementById('errorDetail').textContent =
+      `加载词库时出错：${e.message}`;
+    showScreen('screen-error');
+  }
+}
+
+// ======================== 随机抽词（Fisher-Yates 部分洗牌） ========================
+function drawWords(count) {
+  if (wordBank.length === 0) return [];
+  const n = Math.min(count, wordBank.length);
+  // 复制索引数组，只对前 n 个位置做 Fisher-Yates
+  const indices = wordBank.map((_, i) => i);
+  for (let i = 0; i < n; i++) {
+    const j = i + Math.floor(Math.random() * (indices.length - i));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+  return indices.slice(0, n).map(i => wordBank[i]);
+}
+
+// ======================== 抽词按钮 ========================
+function doDraw() {
+  if (wordBank.length === 0) {
+    const err = document.getElementById('errDraw');
+    err.textContent = '词库为空，请检查 CSV 文件';
+    err.style.display = 'block';
+    return;
+  }
+
+  currentWords = drawWords(3);
+  if (currentWords.length === 0) {
+    const err = document.getElementById('errDraw');
+    err.textContent = '抽词失败，请刷新页面重试';
+    err.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('errDraw').style.display = 'none';
+  renderPickCards();
+  showScreen('screen-pick');
+}
+
+// ======================== 渲染三选一卡片 ========================
+function renderPickCards() {
+  const container = document.getElementById('wordCards');
+  container.innerHTML = currentWords.map((w, i) => `
+    <div class="word-card" onclick="pickWord(${i})">
+      ${escapeHTML(w.word)}
+      ${w.hint ? `<span class="hint">💡 ${escapeHTML(w.hint)}</span>` : ''}
+    </div>
+  `).join('');
+}
+
+// ======================== 选中词语 ========================
+function pickWord(index) {
+  selectedWord = currentWords[index];
+  document.getElementById('resultWord').textContent = selectedWord.word;
+  document.getElementById('resultHint').textContent =
+    selectedWord.hint ? '💡 ' + selectedWord.hint : '';
+  showScreen('screen-result');
+}
+
+// ======================== 返回重抽 ========================
+function goBack() {
+  showScreen('screen-draw');
+}
+
+function goDraw() {
+  currentWords = [];
+  selectedWord = null;
+  showScreen('screen-draw');
+}
+
+function goDrawWithOld() {
+  // 同一组词重新选择（不重新抽）
+  if (currentWords.length === 0) {
+    goDraw();
+    return;
+  }
+  renderPickCards();
+  showScreen('screen-pick');
+}
+
+// ======================== 工具函数 ========================
+function escapeHTML(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ======================== 页面启动 ========================
+initApp();
+</script>
+
+</body>
+</html>
